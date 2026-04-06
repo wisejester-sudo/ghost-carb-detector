@@ -322,14 +322,25 @@ The dashboard updates automatically every 5 minutes. Keep it open in a browser t
 
 ## Machine Learning (Making it Smarter)
 
-Ghost Carb Detector learns your personal glucose response patterns. The more you use it, the better it gets.
+Ghost Carb Detector learns your personal glucose response patterns using the `ml-regression` library. The more you use it, the better it gets.
 
 ### How It Works
 
-Everyone's body responds differently to carbs:
-- You might rise 60 mg/dL from 15g carbs
-- Someone else might only rise 40 mg/dL
-- The app learns YOUR pattern
+The ML system uses **meal-type specific models** because different foods affect glucose differently:
+
+**Fast Carbs** (juice, candy, soda):
+- Quick spike, rapid fall
+- ~3.6 mg/dL rise per gram of carb
+
+**Medium Carbs** (bread, rice, fruit):
+- Standard glucose curve
+- ~2.5 mg/dL rise per gram of carb
+
+**Slow Carbs** (pizza, pasta, high-fat meals):
+- Extended rise, gradual fall
+- ~1.5 mg/dL rise per gram of carb
+
+The app automatically classifies detected meals and learns YOUR personal response for each type.
 
 ### Check ML Status
 
@@ -342,7 +353,7 @@ ghost-carb ml-status
 🧠 Machine Learning Status
 
 ❌ Model not trained yet
-   Training examples: 0/5
+   Training examples: 0/10
 
    Use "ghost-carb ml-learn" to add confirmed treatments
 ```
@@ -352,42 +363,62 @@ ghost-carb ml-status
 🧠 Machine Learning Status
 
 ✅ Model trained
-   R² Score: 0.87
    Training examples: 23
-   Rise per 15g carbs: ~58 mg/dL
-   Avg peak time: ~62 min
+   
+   Meal Type Models:
+   Fast:   slope=3.62, r²=0.91 (7 examples)
+   Medium: slope=2.48, r²=0.87 (10 examples)
+   Slow:   slope=1.53, r²=0.89 (6 examples)
+   
+   Validation: MAE=12.4 mg/dL, RMSE=15.2 mg/dL
    Last trained: 4/6/2026, 2:15:00 PM
 ```
 
 ### Teach the App
 
-When the app detects a ghost carb, you can confirm if it's real:
+When the app detects a ghost carb, confirm what you actually ate:
 
 ```bash
-ghost-carb ml-learn --carbs 30 --insulin 2
+# Format: ml-learn --carbs AMOUNT --meal-type TYPE
+ghost-carb ml-learn --carbs 30 --meal-type medium
+
+# With insulin (optional)
+ghost-carb ml-learn --carbs 45 --meal-type slow --insulin 3
 ```
 
-This tells the app:
-- "Yes, I ate 30g carbs"
-- "I took 2 units of insulin"
-- "Learn from this for next time"
+**Meal Types:**
+- `fast` - Juice, candy, soda (quick spike)
+- `medium` - Bread, rice, fruit (standard)
+- `slow` - Pizza, pasta, fatty foods (extended rise)
 
 **Tips:**
 - Add examples when you're sure what you ate
-- Include insulin if you took any
-- The app needs at least 5 examples to train
+- The app needs at least 3 examples per meal type
+- Include insulin for better IOB calculation
+- The app automatically detects outliers and excludes them
 
-### See Time Patterns
+### Outlier Detection
 
-The app learns when you typically eat:
+The ML system automatically excludes anomalous readings:
 
 ```
-📊 Time-of-day patterns:
-   7:00 - avg rise 45 mg/dL (12 examples) ← Breakfast
-   12:00 - avg rise 62 mg/dL (15 examples) ← Lunch
-   19:00 - avg rise 55 mg/dL (14 examples) ← Dinner
-   15:00 - avg rise 38 mg/dL (8 examples) ← Afternoon snack
+Training on 25 examples...
+  Removed 2 outliers (Z-score > 2.5)
+  Training set: 18, Validation set: 5
+  ✅ Model trained with cross-validation
 ```
+
+This prevents sick days, sensor errors, or unusual circumstances from affecting your model.
+
+### Confidence Intervals
+
+Predictions include 95% confidence intervals:
+
+```
+Detected: ~32g carbs [26g - 38g] (87% confidence)
+```
+
+This means: "You're 95% confident the actual carbs were between 26-38g, with 32g being the best estimate."
 
 ### Backup Your Patterns
 
