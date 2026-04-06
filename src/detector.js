@@ -69,6 +69,9 @@ class GhostCarbDetector {
         type: entry.type
       })).filter(e => e.glucose !== null && e.glucose !== undefined);
 
+      // Sort by timestamp (oldest first) for pattern detection
+      entries.sort((a, b) => a.timestamp - b.timestamp);
+
       console.log(`  ✓ Retrieved ${entries.length} glucose readings`);
       return entries;
 
