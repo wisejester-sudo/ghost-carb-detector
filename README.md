@@ -15,6 +15,16 @@ If you use a CGM (like Dexcom, Libre, or Medtronic) with Nightscout, you know th
 
 **Ghost Carb Detector** watches your glucose data and spots those "invisible" meals automatically. It learns your personal patterns and gets smarter over time.
 
+### Part of Something Bigger
+
+This tool is part of **[Mieru Health](https://mieru.health)** - a project I started after reversing my own prediabetes with CGM + GLP-1s. 
+
+I noticed that my CGM data was incredibly valuable, but the tools to understand it were either too complex or didn't exist. So I started building what I wished I had.
+
+Ghost Carb Detector is the first piece. The broader goal is to make CGM data actually useful without requiring a CS degree or medical background.
+
+If you're interested in following along or getting early access to the full platform, you can [join the Mieru Health waitlist](https://mieru.health). No pressure - just building in public.
+
 ## Who is this for?
 
 - **People with diabetes** using Nightscout
