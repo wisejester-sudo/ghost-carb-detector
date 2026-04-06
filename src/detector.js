@@ -7,6 +7,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const PersonalML = require('./ml');
 
 class GhostCarbDetector {
   constructor(config) {
@@ -15,6 +16,7 @@ class GhostCarbDetector {
     this.riseThreshold = config.riseThreshold || 30; // mg/dL
     this.timeWindow = config.timeWindow || 90; // minutes
     this.headers = this.apiSecret ? { 'api-secret': this.apiSecret } : {};
+    this.ml = new PersonalML(config);
   }
 
   /**
@@ -176,7 +178,7 @@ class GhostCarbDetector {
             rise,
             timeToPeak,
             riseRate,
-            estimatedCarbs: this.estimateCarbsFromRise(rise)
+            estimatedCarbs: this.estimateCarbsFromRise(rise).carbs
           });
         }
       }
@@ -207,16 +209,12 @@ class GhostCarbDetector {
   }
 
   /**
-   * Estimate carbs from glucose rise
-   * Rough approximation: 15g carbs ≈ 60 mg/dL rise
+   * Estimate carbs from glucose rise using ML
    * @param {number} rise - Glucose rise in mg/dL
-   * @returns {number} - Estimated carbs in grams
+   * @returns {Object} - Estimated carbs with confidence
    */
   estimateCarbsFromRise(rise) {
-    // This is highly variable by person, but rough rule:
-    // 15g fast carbs ≈ 60-80 mg/dL rise for typical person
-    const carbsPerMgDl = 15 / 70;
-    return Math.round(rise * carbsPerMgDl);
+    return this.ml.predictCarbs(rise);
   }
 
   /**
@@ -352,6 +350,15 @@ class GhostCarbDetector {
     
     // Sort by confidence
     results.sort((a, b) => b.confidence - a.confidence);
+    
+    // Add ML info if available
+    const mlStats = this.ml.getStats();
+    if (results.length > 0) {
+      results.forEach(r => {
+        r.mlTrained = mlStats.learned;
+        r.mlConfidence = mlStats.learned ? Math.round(mlStats.rSquared * 100) : 0;
+      });
+    }
     
     return results;
   }

@@ -4,6 +4,7 @@ const { Command } = require('commander');
 const GhostCarbDetector = require('../src/detector');
 const NotificationService = require('../src/notifications');
 const Dashboard = require('../src/dashboard');
+const PersonalML = require('../src/ml');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -34,7 +35,7 @@ const program = new Command();
 program
   .name('ghost-carb')
   .description('Detect unlogged carb events from Nightscout')
-  .version('0.3.0');
+  .version('0.4.0');
 
 program
   .command('config')
@@ -325,6 +326,137 @@ program
     console.log('🧪 Sending demo notification...');
     await notifier.notify(testGhost);
     console.log('✅ Done!');
+  });
+
+// Machine Learning Commands
+program
+  .command('ml-status')
+  .description('Show ML model status')
+  .action(() => {
+    const PersonalML = require('../src/ml');
+    const ml = new PersonalML({});
+    const stats = ml.getStats();
+    
+    console.log('\n🧠 Machine Learning Status\n');
+    
+    if (!stats.learned) {
+      console.log('❌ Model not trained yet');
+      console.log(`   Training examples: ${stats.trainingExamples}/5`);
+      console.log('\n   Use "ghost-carb ml-learn" to add confirmed treatments');
+    } else {
+      console.log('✅ Model trained');
+      console.log(`   R² Score: ${stats.rSquared}`);
+      console.log(`   Training examples: ${stats.sampleSize}`);
+      console.log(`   Rise per 15g carbs: ~${stats.avgRisePer15g} mg/dL`);
+      console.log(`   Avg peak time: ~${stats.peakTimeAvg} min`);
+      console.log(`   Last trained: ${new Date(stats.lastTrained).toLocaleString()}`);
+      
+      if (stats.timeOfDayPatterns) {
+        console.log('\n📊 Time-of-day patterns:');
+        Object.entries(stats.timeOfDayPatterns).forEach(([hour, data]) => {
+          console.log(`   ${hour}:00 - avg rise ${data.avgRise} mg/dL (${data.count} examples)`);
+        });
+      }
+    }
+    
+    console.log('');
+  });
+
+program
+  .command('ml-train')
+  .description('Force retrain the ML model')
+  .action(() => {
+    const PersonalML = require('../src/ml');
+    const ml = new PersonalML({});
+    
+    console.log('\n🧠 Retraining model...\n');
+    ml.retrain();
+    console.log('✅ Done!\n');
+  });
+
+program
+  .command('ml-learn')
+  .description('Learn from a confirmed treatment')
+  .requiredOption('--carbs <g>', 'Actual carbs consumed')
+  .option('--insulin <u>', 'Insulin units given', '0')
+  .option('--time <iso>', 'Timestamp (ISO 8601)', new Date().toISOString())
+  .action((options) => {
+    const PersonalML = require('../src/ml');
+    const ml = new PersonalML({});
+    
+    console.log('\n🧠 Learning from confirmed treatment...\n');
+    
+    // Create mock features (in real use, this would extract from glucose data)
+    const features = {
+      timestamp: options.time,
+      rise: parseInt(options.carbs) * 4, // rough estimate
+      timeToPeak: 60,
+      duration: 120,
+      riseRate: 0.8,
+      avgGlucose: 120,
+      auc: 14400,
+      startGlucose: 100,
+      peakGlucose: 140,
+      endGlucose: 110,
+      readingCount: 24
+    };
+    
+    ml.learnFromTreatment(features, parseInt(options.carbs), parseFloat(options.insulin));
+    console.log(`✅ Learned: ${options.carbs}g carbs → ~${features.rise} mg/dL rise`);
+    console.log(`   Total examples: ${ml.trainingData.length}\n`);
+    
+    // Retrain if enough examples
+    if (ml.trainingData.length >= 5) {
+      ml.retrain();
+    }
+  });
+
+program
+  .command('ml-clear')
+  .description('Clear all learned ML data')
+  .action(() => {
+    const PersonalML = require('../src/ml');
+    const ml = new PersonalML({});
+    
+    console.log('\n🗑️  Clearing all learned data...\n');
+    ml.clear();
+    console.log('✅ All ML data cleared\n');
+  });
+
+program
+  .command('ml-export')
+  .description('Export training data to JSON')
+  .option('--file <path>', 'Output file path')
+  .action((options) => {
+    const PersonalML = require('../src/ml');
+    const ml = new PersonalML({});
+    
+    const data = ml.exportTrainingData();
+    
+    const outputPath = options.file || path.join(os.homedir(), '.ghost-carb', 'ml-export.json');
+    fs.writeFileSync(outputPath, JSON.stringify(data, null, 2));
+    
+    console.log(`\n✅ Exported ${ml.trainingData.length} examples to ${outputPath}\n`);
+  });
+
+program
+  .command('ml-import')
+  .description('Import training data from JSON')
+  .requiredOption('--file <path>', 'Input file path')
+  .action((options) => {
+    const PersonalML = require('../src/ml');
+    const ml = new PersonalML({});
+    
+    if (!fs.existsSync(options.file)) {
+      console.error(`\n❌ File not found: ${options.file}\n`);
+      process.exit(1);
+    }
+    
+    const data = JSON.parse(fs.readFileSync(options.file, 'utf8'));
+    ml.importTrainingData(data);
+    
+    console.log(`\n✅ Imported ${ml.trainingData.length} examples`);
+    console.log(`   Model status: ${ml.patterns.learned ? 'trained' : 'not trained'}\n`);
   });
 
 program.parse();
