@@ -311,44 +311,69 @@ class EnhancedML {
     // Normalize features
     const features = ['carbs', 'startGlucose', 'hour', 'dayOfWeek', 'iob'];
     
-    // Calculate feature statistics
+    // Calculate feature statistics for normalization
     features.forEach(f => {
       const values = data.map(d => d.features[f] || 0);
-      this.model.featureStats[f] = {
-        mean: values.reduce((a, b) => a + b, 0) / values.length,
-        std: Math.sqrt(values.reduce((sum, v) => sum + Math.pow(v - values.reduce((a,b)=>a+b)/values.length, 2), 0) / values.length)
-      };
+      const mean = values.reduce((a, b) => a + b, 0) / values.length;
+      const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
+      const std = Math.sqrt(variance) || 1; // Avoid division by zero
+      
+      this.model.featureStats[f] = { mean, std };
     });
     
-    // Simple gradient descent for multiple regression
-    const learningRate = 0.01;
-    const iterations = 1000;
+    // Normalize a value
+    const normalize = (value, feature) => {
+      const stats = this.model.featureStats[feature];
+      return (value - stats.mean) / stats.std;
+    };
+    
+    // Simple gradient descent for multiple regression with normalized features
+    const learningRate = 0.001; // Much smaller rate for stability
+    const iterations = 500;
     
     for (let iter = 0; iter < iterations; iter++) {
       let totalError = 0;
       
       data.forEach(example => {
-        const prediction = this.predictWithFeatures(example.features);
+        // Normalize features for prediction
+        const normFeatures = {
+          carbs: normalize(example.features.carbs || 0, 'carbs'),
+          startGlucose: normalize(example.features.startGlucose || 0, 'startGlucose'),
+          hour: normalize(example.features.hour || 0, 'hour'),
+          dayOfWeek: normalize(example.features.dayOfWeek || 0, 'dayOfWeek'),
+          iob: normalize(example.features.iob || 0, 'iob')
+        };
+        
+        const prediction = this.predictWithFeatures(normFeatures);
         const error = example.rise - prediction;
         totalError += Math.abs(error);
         
-        // Update coefficients
-        this.model.coefficients.intercept += learningRate * error;
-        this.model.coefficients.carbs += learningRate * error * (example.features.carbs || 0);
-        this.model.coefficients.startGlucose += learningRate * error * (example.features.startGlucose || 0);
-        this.model.coefficients.hour += learningRate * error * (example.features.hour || 0);
-        this.model.coefficients.dayOfWeek += learningRate * error * (example.features.dayOfWeek || 0);
-        this.model.coefficients.iob += learningRate * error * (example.features.iob || 0);
+        // Update coefficients with gradient clipping
+        const clip = (val, max) => Math.max(-max, Math.min(max, val));
+        
+        this.model.coefficients.intercept += clip(learningRate * error, 1);
+        this.model.coefficients.carbs += clip(learningRate * error * normFeatures.carbs, 1);
+        this.model.coefficients.startGlucose += clip(learningRate * error * normFeatures.startGlucose, 1);
+        this.model.coefficients.hour += clip(learningRate * error * normFeatures.hour, 1);
+        this.model.coefficients.dayOfWeek += clip(learningRate * error * normFeatures.dayOfWeek, 1);
+        this.model.coefficients.iob += clip(learningRate * error * normFeatures.iob, 1);
       });
       
-      if (iter % 200 === 0) {
-        console.log(`    Iteration ${iter}: Avg Error = ${(totalError / data.length).toFixed(2)}`);
+      if (iter % 100 === 0) {
+        const avgError = totalError / data.length;
+        console.log(`    Iteration ${iter}: Avg Error = ${avgError.toFixed(2)}`);
+        
+        // Early stopping if converged
+        if (avgError < 5) {
+          console.log(`    Converged at iteration ${iter}`);
+          break;
+        }
       }
     }
   }
 
   /**
-   * Predict using feature coefficients
+   * Predict using feature coefficients (expects normalized features)
    */
   predictWithFeatures(features) {
     const coef = this.model.coefficients;
@@ -358,6 +383,15 @@ class EnhancedML {
       coef.hour * (features.hour || 0) +
       coef.dayOfWeek * (features.dayOfWeek || 0) +
       coef.iob * (features.iob || 0);
+  }
+
+  /**
+   * Normalize a feature value
+   */
+  normalize(value, feature) {
+    if (!this.model.featureStats[feature]) return value;
+    const stats = this.model.featureStats[feature];
+    return (value - stats.mean) / stats.std;
   }
 
   /**
@@ -401,7 +435,17 @@ class EnhancedML {
 
     // Use meal type specific model if available
     const model = this.model.mealTypes[mealType] || this.model.mealTypes.medium;
-    const featuresPrediction = this.predictWithFeatures({ ...features, carbs: 0 });
+    
+    // Normalize features for prediction
+    const normFeatures = {
+      carbs: 0, // We're predicting this
+      startGlucose: this.normalize(features.startGlucose || 100, 'startGlucose'),
+      hour: this.normalize(features.hour || 12, 'hour'),
+      dayOfWeek: this.normalize(features.dayOfWeek || 0, 'dayOfWeek'),
+      iob: this.normalize(features.iob || 0, 'iob')
+    };
+    
+    const featuresPrediction = this.predictWithFeatures(normFeatures);
     
     // Calculate carbs: (rise - features_effect) / slope
     const adjustedRise = rise - featuresPrediction;
