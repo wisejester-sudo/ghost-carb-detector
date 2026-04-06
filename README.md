@@ -36,13 +36,12 @@ ghost-carb config --nightscout-url https://your-nightscout.herokuapp.com --api-s
 ghost-carb status
 ```
 
-### Step 2: Notifications (Optional but Recommended)
+### Step 2: Notifications (Optional)
 
 Configure one or more notification channels:
 
 #### Telegram
 ```bash
-# Get bot token from @BotFather, chat ID from @userinfobot
 ghost-carb config-notifications \
   --telegram-token YOUR_BOT_TOKEN \
   --telegram-chat YOUR_CHAT_ID
@@ -50,7 +49,6 @@ ghost-carb config-notifications \
 
 #### Pushover (iOS/Android)
 ```bash
-# Get tokens from pushover.net
 ghost-carb config-notifications \
   --pushover-app YOUR_APP_TOKEN \
   --pushover-user YOUR_USER_KEY
@@ -58,153 +56,99 @@ ghost-carb config-notifications \
 
 #### Slack
 ```bash
-# Create webhook at https://api.slack.com/messaging/webhooks
 ghost-carb config-notifications \
   --slack-webhook https://hooks.slack.com/services/...
 ```
 
 #### Discord
 ```bash
-# Create webhook in Server Settings > Integrations
 ghost-carb config-notifications \
   --discord-webhook https://discord.com/api/webhooks/...
 ```
 
-#### Signal (requires signal-cli-rest-api)
-```bash
-ghost-carb config-notifications \
-  --signal-url http://localhost:8080 \
-  --signal-phone +1234567890
-```
-
-#### Custom Webhook
-```bash
-ghost-carb config-notifications \
-  --webhook-url https://your-service.com/webhook
-```
-
-### Remove Notification Channel
-```bash
-ghost-carb config-notifications --remove telegram
-```
-
 ## Usage
 
-### Test Connection
+### Web Dashboard (NEW v0.3.0)
+
+Launch the visual dashboard:
 
 ```bash
-# Test Nightscout
-ghost-carb test
+# Start dashboard on default port (3456)
+ghost-carb dashboard
 
-# Test notifications
-ghost-carb test --notifications
+# Use custom port
+ghost-carb dashboard --port 8080
 ```
 
-### Run Detection
+Then open http://localhost:3456 in your browser.
+
+**Dashboard Features:**
+- 📈 **Real-time glucose chart** with Chart.js visualization
+- 👻 **Ghost carb detection** with one-click analysis
+- 📊 **Statistics** (current glucose, average, readings count)
+- 💉 **Recent treatments** list
+- ⚙️ **Adjustable parameters** (time range, rise threshold)
+- 📤 **Test notifications** from the UI
+- 🔄 **Auto-refresh** every 5 minutes
+
+### CLI Commands
 
 ```bash
-# Check last 4 hours (default)
-ghost-carb check
+# Test connections
+ghost-carb test                          # Test Nightscout
+ghost-carb test --notifications          # Test notification channels
 
-# Check last 8 hours with notifications
-ghost-carb check --hours 8 --notify
-
-# Only show output if ghosts found (good for cron)
-ghost-carb check --quiet
-
-# Output as JSON
-ghost-carb check --json
+# Run detection
+ghost-carb check                         # Check last 4 hours
+ghost-carb check --hours 8 --notify      # Check 8 hours with notifications
+ghost-carb check --quiet                 # Only output if ghosts found (for cron)
 
 # Send demo notification
 ghost-carb demo
-```
 
-### Example Output
-
-```
-🔍 Starting ghost carb detection...
-
-Fetching 4h of glucose data...
-  ✓ Retrieved 48 glucose readings
-
-Fetching 4h of treatment data...
-  ✓ Retrieved 12 treatments (3 insulin, 2 carbs)
-
-💉 Calculating insulin on board...
-  ✓ IOB calculated for 48 readings
-
-🎯 Analyzing glucose patterns...
-  ✓ Found 3 potential carb events
-
-🧹 Filtering logged treatments...
-  ✓ 1 unlogged events detected
-
-============================================================
-GHOST CARB DETECTION RESULTS
-============================================================
-
-🚨 Detected 1 potential ghost carb event(s):
-
-1. 🔴 Ghost Carb #1 (85% confidence)
-   Time: 4/6/2026, 2:47:00 PM
-   Glucose: 120 → 165 mg/dL (+45)
-   Peak at: 3:32:00 PM (45 min)
-   Estimated carbs: ~10g
-
-📤 Sending notifications to 2 channel(s)...
-  ✅ Telegram
-  ✅ Pushover
-
-============================================================
+# View status
+ghost-carb status
 ```
 
 ## Automated Monitoring
 
-### Cron Setup (Linux/Mac)
+### Cron Setup
 
 Check every 15 minutes:
 
 ```bash
-# Edit crontab
 crontab -e
 
-# Add line:
+# Add:
 */15 * * * * /usr/local/bin/ghost-carb check --quiet --notify
 ```
 
-### systemd Timer (Linux)
+### Run Dashboard as Service (systemd)
 
-Create `/etc/systemd/system/ghost-carb.service`:
+Create `/etc/systemd/system/ghost-carb-dashboard.service`:
 
 ```ini
 [Unit]
-Description=Ghost Carb Detector
+Description=Ghost Carb Detector Dashboard
+After=network.target
 
 [Service]
-Type=oneshot
-ExecStart=/usr/local/bin/ghost-carb check --notify
+Type=simple
 User=your-username
-```
-
-Create `/etc/systemd/system/ghost-carb.timer`:
-
-```ini
-[Unit]
-Description=Run Ghost Carb Detector every 15 minutes
-
-[Timer]
-OnBootSec=5min
-OnUnitActiveSec=15min
+WorkingDirectory=/home/your-username/ghost-carb-detector
+ExecStart=/usr/bin/node bin/cli.js dashboard
+Restart=always
+RestartSec=10
 
 [Install]
-WantedBy=timers.target
+WantedBy=multi-user.target
 ```
 
 Enable:
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable ghost-carb.timer
-sudo systemctl start ghost-carb.timer
+sudo systemctl enable ghost-carb-dashboard
+sudo systemctl start ghost-carb-dashboard
 ```
 
 ## How It Works
@@ -229,11 +173,11 @@ sudo systemctl start ghost-carb.timer
 
 ### Algorithm Details
 
-See [ALGORITHM.md](ALGORITHM.md) for technical details on:
-- IOB calculation
-- Pattern matching
-- Confidence scoring
-- Curve analysis
+See [ALGORITHM.md](ALGORITHM.md) for:
+- IOB calculation with exponential decay
+- Pattern matching parameters
+- Confidence scoring formula
+- Curve analysis methodology
 
 ## Configuration Options
 
@@ -250,17 +194,26 @@ ghost-carb config --time-window 120        # Analyze 2-hour windows
 
 ## Status
 
-🚧 **v0.2.0** — Notifications + Core detection
+✅ **v0.3.0** — Web Dashboard + Notifications + Core detection
 
+- ✅ Web dashboard with real-time charts
+- ✅ Multi-channel notifications (Telegram, Signal, Pushover, Slack, Discord)
 - ✅ Fetch glucose data from Nightscout
 - ✅ Fetch treatments (insulin/carbs)
 - ✅ Calculate IOB
 - ✅ Detect carb patterns
 - ✅ Filter logged treatments
 - ✅ Confidence scoring
-- ✅ Notifications (Telegram, Signal, Pushover, Slack, Discord, Webhook)
-- 🔄 Web dashboard (coming v0.3.0)
-- 🔄 Machine learning (coming v0.4.0)
+- ✅ CLI with config/test/check/status commands
+- 🔄 Machine learning for personal patterns (coming v0.4.0)
+
+## Screenshots
+
+**Dashboard Overview:**
+- Dark theme optimized for CGM monitoring
+- Interactive glucose chart
+- Ghost carb detection with confidence badges
+- Real-time statistics
 
 ## License
 

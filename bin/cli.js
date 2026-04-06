@@ -3,6 +3,7 @@
 const { Command } = require('commander');
 const GhostCarbDetector = require('../src/detector');
 const NotificationService = require('../src/notifications');
+const Dashboard = require('../src/dashboard');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -33,7 +34,7 @@ const program = new Command();
 program
   .name('ghost-carb')
   .description('Detect unlogged carb events from Nightscout')
-  .version('0.2.0');
+  .version('0.3.0');
 
 program
   .command('config')
@@ -273,9 +274,28 @@ program
 program
   .command('dashboard')
   .description('Launch web dashboard')
-  .action(() => {
-    console.log('Dashboard not yet implemented');
-    console.log('Coming in v0.3.0');
+  .option('--port <port>', 'Dashboard port', '3456')
+  .action(async (options) => {
+    const config = loadConfig();
+    
+    if (!config.nightscoutUrl) {
+      console.error('❌ Nightscout URL not configured. Run: ghost-carb config --nightscout-url <url>');
+      process.exit(1);
+    }
+    
+    config.dashboardPort = parseInt(options.port);
+    
+    console.log('🚀 Starting Ghost Carb Detector Dashboard...\n');
+    
+    const dashboard = new Dashboard(config);
+    await dashboard.start();
+    
+    // Keep process alive
+    process.on('SIGINT', () => {
+      console.log('\n\n👋 Shutting down dashboard...');
+      dashboard.stop();
+      process.exit(0);
+    });
   });
 
 program

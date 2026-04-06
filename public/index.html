@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ghost Carb Detector Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>👻 Ghost Carb Detector</h1>
+      <p class="subtitle">Nightscout CGM Analysis Dashboard</p>
+      <div class="status" id="connectionStatus">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Connecting...</span>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- Controls -->
+      <div class="card controls">
+        <h2>⚙️ Controls</h2>
+        <div class="form-group">
+          <label>Time Range:</label>
+          <select id="timeRange">
+            <option value="2">Last 2 hours</option>
+            <option value="4" selected>Last 4 hours</option>
+            <option value="8">Last 8 hours</option>
+            <option value="12">Last 12 hours</option>
+            <option value="24">Last 24 hours</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Rise Threshold: <span id="thresholdValue">30</span> mg/dL</label>
+          <input type="range" id="riseThreshold" min="20" max="100" value="30">
+        </div>
+        <button id="refreshBtn" class="btn primary">🔄 Refresh Data</button>
+        <button id="detectBtn" class="btn secondary">🔍 Run Detection</button>
+        <button id="testNotifyBtn" class="btn">📤 Test Notification</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="card stats">
+        <h2>📊 Statistics</h2>
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="stat-value" id="currentGlucose">--</div>
+            <div class="stat-label">Current Glucose</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" id="avgGlucose">--</div>
+            <div class="stat-label">Average</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" id="readingsCount">--</div>
+            <div class="stat-label">Readings</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" id="ghostCount">0</div>
+            <div class="stat-label">Ghosts Detected</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chart -->
+      <div class="card chart-card full-width">
+        <h2>📈 Glucose Chart</h2>
+        <div class="chart-container">
+          <canvas id="glucoseChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Ghosts List -->
+      <div class="card ghosts-list full-width">
+        <h2>👻 Detected Ghost Carbs</h2>
+        <div id="ghostsContainer">
+          <p class="empty">No ghost carbs detected. Click "Run Detection" to analyze.</p>
+        </div>
+      </div>
+
+      <!-- Treatments -->
+      <div class="card treatments-list full-width">
+        <h2>💉 Recent Treatments</h2>
+        <div id="treatmentsContainer">
+          <p class="empty">Loading treatments...</p>
+        </div>
+      </div>
+
+      <!-- Config Info -->
+      <div class="card config-info">
+        <h2>🔌 Configuration</h2>
+        <div id="configInfo">
+          <p>Loading...</p>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div class="card legend">
+        <h2>📖 Legend</h2>
+        <div class="legend-item">
+          <span class="legend-dot high"></span>
+          <span>High confidence (80%+)</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot medium"></span>
+          <span>Medium confidence (60-80%)</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot low"></span>
+          <span>Low confidence (<60%)</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-line insulin"></span>
+          <span>Insulin on board</span>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <p>Ghost Carb Detector v0.3.0 | <a href="https://github.com/wisejester-sudo/ghost-carb-detector" target="_blank">GitHub</a></p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
