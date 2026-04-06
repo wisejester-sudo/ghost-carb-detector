@@ -101,6 +101,39 @@ If your Nightscout requires authentication:
 ghost-carb config --nightscout-url https://your-nightscout.herokuapp.com --api-secret your-secret-here
 ```
 
+#### ⚠️ Important: Authentication Methods
+
+Nightscout supports two authentication methods. If you get "401 Unauthorized" errors, try the other method:
+
+**Method 1: Header-based (default)**
+- Uses `api-secret` HTTP header with SHA1 hash
+- Works with most Nightscout installations
+- Automatically handles SHA1 hashing
+
+**Method 2: Token-based**  
+- Uses `?token=` query parameter
+- Required for some Render.com and Heroku deployments
+- Use this if Method 1 fails
+
+```bash
+# Try token-based auth if header-based fails
+ghost-carb config \
+  --nightscout-url https://your-nightscout.herokuapp.com \
+  --api-secret your-secret-here \
+  --use-token-auth
+```
+
+**How to determine which to use:**
+- If you can read data but get 401 on writes → Use `--use-token-auth`
+- If all API calls fail with 401 → Check your API_SECRET is correct
+- The API_SECRET is different from your web login password
+
+**Finding your API_SECRET:**
+1. Log into Nightscout web interface
+2. Go to **Admin Tools** → **Settings**
+3. Look for `API_SECRET` environment variable
+4. Or check your hosting provider (Render/Heroku) environment variables
+
 ### 2. Test the Connection
 
 ```bash
@@ -128,6 +161,15 @@ ghost-carb check
 ```
 
 This checks the last 4 hours for unlogged carbs.
+
+#### Data Requirements
+
+For best results, Ghost Carb Detector needs:
+- **Continuous CGM data** (readings every 5 minutes)
+- **At least 30 minutes** of recent data
+- **At least 6 glucose readings** in the analysis window
+
+Sparse data (readings every 15+ minutes) may not trigger detection. Real Dexcom/G6 data works best.
 
 ### Example Output
 
@@ -504,11 +546,31 @@ Shows:
 
 ### "Connection failed: 401 Unauthorized"
 
-Your API secret is wrong or missing.
+Authentication failed. This usually means:
 
-**Fix:**
+**A. Wrong API Secret**
 ```bash
 ghost-carb config --api-secret your-correct-secret
+```
+
+**B. Wrong Authentication Method**
+Some Nightscout instances require token-based auth instead of header-based:
+```bash
+ghost-carb config \
+  --nightscout-url https://your-nightscout.herokuapp.com \
+  --api-secret your-secret \
+  --use-token-auth
+```
+
+**C. API Secret vs Web Password**
+The API_SECRET (for API access) is different from your web login password. Check your Nightscout environment variables.
+
+**D. SHA1 Hashing (advanced)**
+If manually using curl, the API secret must be SHA1 hashed:
+```bash
+API_SECRET="your-secret"
+HASH=$(echo -n "$API_SECRET" | shasum | awk '{print $1}')
+curl -H "api-secret: $HASH" https://your-nightscout.herokuapp.com/api/v1/entries.json
 ```
 
 ### "Connection failed: 404 Not Found"
