@@ -41,7 +41,8 @@ program
   .command('config')
   .description('Configure Nightscout connection')
   .option('--nightscout-url <url>', 'Nightscout URL')
-  .option('--api-secret <secret>', 'API Secret')
+  .option('--api-secret <secret>', 'API Secret or token')
+  .option('--use-token-auth', 'Use token-based auth (?token=) instead of header')
   .option('--rise-threshold <mg>', 'Glucose rise threshold (mg/dL)', '30')
   .option('--time-window <min>', 'Analysis window (minutes)', '90')
   .action((options) => {
@@ -49,12 +50,14 @@ program
     
     if (options.nightscoutUrl) config.nightscoutUrl = options.nightscoutUrl;
     if (options.apiSecret) config.apiSecret = options.apiSecret;
+    if (options.useTokenAuth) config.useTokenAuth = true;
     if (options.riseThreshold) config.riseThreshold = parseInt(options.riseThreshold);
     if (options.timeWindow) config.timeWindow = parseInt(options.timeWindow);
     
     saveConfig(config);
     console.log('✅ Configuration saved');
     console.log(`   Config file: ${CONFIG_FILE}`);
+    if (config.useTokenAuth) console.log('   Auth method: Token-based (?token=)');
   });
 
 program

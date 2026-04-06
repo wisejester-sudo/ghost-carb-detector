@@ -16,7 +16,30 @@ class GhostCarbDetector {
     this.riseThreshold = config.riseThreshold || 30; // mg/dL
     this.timeWindow = config.timeWindow || 90; // minutes
     this.headers = this.apiSecret ? { 'api-secret': this.apiSecret } : {};
+    this.useTokenAuth = config.useTokenAuth || false; // Use ?token= instead of header
     this.ml = new PersonalML(config);
+  }
+
+  /**
+   * Build URL with authentication
+   * @param {string} endpoint - API endpoint
+   * @param {Object} params - Query parameters
+   * @returns {string} - Full URL
+   */
+  buildUrl(endpoint, params = {}) {
+    const url = new URL(endpoint, this.nightscoutUrl);
+    
+    // Add params
+    Object.keys(params).forEach(key => {
+      url.searchParams.append(key, params[key]);
+    });
+    
+    // Add token auth if enabled
+    if (this.useTokenAuth && this.apiSecret) {
+      url.searchParams.append('token', this.apiSecret);
+    }
+    
+    return url.toString();
   }
 
   /**
@@ -29,10 +52,10 @@ class GhostCarbDetector {
       // Nightscout API: entries.json returns CGM data
       // count = hours * 12 (assuming 5-minute intervals)
       const count = hours * 12;
-      const url = `${this.nightscoutUrl}/api/v1/entries.json?count=${count}`;
+      const url = this.buildUrl('/api/v1/entries.json', { count });
       
       console.log(`Fetching ${hours}h of glucose data...`);
-      const response = await axios.get(url, { headers: this.headers });
+      const response = await axios.get(url, { headers: this.useTokenAuth ? {} : this.headers });
       
       if (!response.data || !Array.isArray(response.data)) {
         throw new Error('Invalid response from Nightscout');
@@ -70,10 +93,12 @@ class GhostCarbDetector {
       // Nightscout API: treatments.json
       // Get treatments from the last N hours
       const startTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-      const url = `${this.nightscoutUrl}/api/v1/treatments.json?find[created_at][$gte]=${startTime}`;
+      const url = this.buildUrl('/api/v1/treatments.json', { 
+        'find[created_at][$gte]': startTime 
+      });
       
       console.log(`Fetching ${hours}h of treatment data...`);
-      const response = await axios.get(url, { headers: this.headers });
+      const response = await axios.get(url, { headers: this.useTokenAuth ? {} : this.headers });
       
       if (!response.data || !Array.isArray(response.data)) {
         throw new Error('Invalid response from Nightscout');
