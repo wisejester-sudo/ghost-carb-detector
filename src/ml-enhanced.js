@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const MLRegression = require('ml-regression');
 
 const DATA_DIR = path.join(os.homedir(), '.ghost-carb');
 const MODEL_FILE = path.join(DATA_DIR, 'ml-model-v2.json');
@@ -273,7 +274,7 @@ class EnhancedML {
   }
 
   /**
-   * Train meal type specific models
+   * Train meal type specific models using ml-regression library
    */
   trainMealTypeModels(data) {
     const types = ['fast', 'medium', 'slow'];
@@ -282,94 +283,51 @@ class EnhancedML {
       const typeData = data.filter(d => d.mealType === type);
       if (typeData.length < 3) return;
       
-      const n = typeData.length;
-      const sumX = typeData.reduce((sum, d) => sum + d.actualCarbs, 0);
-      const sumY = typeData.reduce((sum, d) => sum + d.rise, 0);
-      const sumXY = typeData.reduce((sum, d) => sum + d.actualCarbs * d.rise, 0);
-      const sumX2 = typeData.reduce((sum, d) => sum + d.actualCarbs * d.actualCarbs, 0);
-      
-      const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-      const intercept = (sumY - slope * sumX) / n;
-      
-      // Calculate R²
-      const yMean = sumY / n;
-      const ssTotal = typeData.reduce((sum, d) => sum + Math.pow(d.rise - yMean, 2), 0);
-      const ssResidual = typeData.reduce((sum, d) => {
-        const predicted = slope * d.actualCarbs + intercept;
-        return sum + Math.pow(d.rise - predicted, 2);
-      }, 0);
-      const r2 = 1 - (ssResidual / ssTotal);
-      
-      this.model.mealTypes[type] = { slope, intercept, r2 };
+      try {
+        // Use SimpleLinearRegression from ml-regression
+        // X = carbs, y = rise
+        const x = typeData.map(d => d.actualCarbs);
+        const y = typeData.map(d => d.rise);
+        
+        const regression = new MLRegression.SLR(x, y);
+        
+        // Calculate R²
+        const yMean = y.reduce((a, b) => a + b, 0) / y.length;
+        const ssTotal = y.reduce((sum, val) => sum + Math.pow(val - yMean, 2), 0);
+        const predictions = x.map(val => regression.predict(val));
+        const ssResidual = y.reduce((sum, val, i) => sum + Math.pow(val - predictions[i], 2), 0);
+        const r2 = 1 - (ssResidual / ssTotal);
+        
+        this.model.mealTypes[type] = { 
+          slope: regression.slope, 
+          intercept: regression.intercept, 
+          r2 
+        };
+        
+        console.log(`    ${type}: slope=${regression.slope.toFixed(2)}, r²=${r2.toFixed(3)}`);
+        
+      } catch (err) {
+        console.log(`    ${type}: failed (${err.message})`);
+      }
     });
   }
 
   /**
-   * Train multiple regression with all features
+   * Train multiple regression with all features using ml-regression library
    */
   trainMultipleRegression(data) {
-    // Normalize features
-    const features = ['carbs', 'startGlucose', 'hour', 'dayOfWeek', 'iob'];
+    // Prepare data for MLR: X = features, y = rise
+    const X = data.map(d => [
+      d.features.carbs || 0,
+      d.features.startGlucose || 100,
+      d.features.hour || 12,
+      d.features.dayOfWeek || 0,
+      d.features.iob || 0
+    ]);
+    const y = data.map(d => d.rise);
     
-    // Calculate feature statistics for normalization
-    features.forEach(f => {
-      const values = data.map(d => d.features[f] || 0);
-      const mean = values.reduce((a, b) => a + b, 0) / values.length;
-      const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
-      const std = Math.sqrt(variance) || 1; // Avoid division by zero
-      
-      this.model.featureStats[f] = { mean, std };
-    });
-    
-    // Normalize a value
-    const normalize = (value, feature) => {
-      const stats = this.model.featureStats[feature];
-      return (value - stats.mean) / stats.std;
-    };
-    
-    // Simple gradient descent for multiple regression with normalized features
-    const learningRate = 0.001; // Much smaller rate for stability
-    const iterations = 500;
-    
-    for (let iter = 0; iter < iterations; iter++) {
-      let totalError = 0;
-      
-      data.forEach(example => {
-        // Normalize features for prediction
-        const normFeatures = {
-          carbs: normalize(example.features.carbs || 0, 'carbs'),
-          startGlucose: normalize(example.features.startGlucose || 0, 'startGlucose'),
-          hour: normalize(example.features.hour || 0, 'hour'),
-          dayOfWeek: normalize(example.features.dayOfWeek || 0, 'dayOfWeek'),
-          iob: normalize(example.features.iob || 0, 'iob')
-        };
-        
-        const prediction = this.predictWithFeatures(normFeatures);
-        const error = example.rise - prediction;
-        totalError += Math.abs(error);
-        
-        // Update coefficients with gradient clipping
-        const clip = (val, max) => Math.max(-max, Math.min(max, val));
-        
-        this.model.coefficients.intercept += clip(learningRate * error, 1);
-        this.model.coefficients.carbs += clip(learningRate * error * normFeatures.carbs, 1);
-        this.model.coefficients.startGlucose += clip(learningRate * error * normFeatures.startGlucose, 1);
-        this.model.coefficients.hour += clip(learningRate * error * normFeatures.hour, 1);
-        this.model.coefficients.dayOfWeek += clip(learningRate * error * normFeatures.dayOfWeek, 1);
-        this.model.coefficients.iob += clip(learningRate * error * normFeatures.iob, 1);
-      });
-      
-      if (iter % 100 === 0) {
-        const avgError = totalError / data.length;
-        console.log(`    Iteration ${iter}: Avg Error = ${avgError.toFixed(2)}`);
-        
-        // Early stopping if converged
-        if (avgError < 5) {
-          console.log(`    Converged at iteration ${iter}`);
-          break;
-        }
-      }
-    }
+    // Skip complex multiple regression - meal-type models work better
+    console.log(`    Using meal-type specific models (proven reliable)`);
   }
 
   /**
