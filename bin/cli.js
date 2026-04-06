@@ -2,6 +2,7 @@
 
 const { Command } = require('commander');
 const GhostCarbDetector = require('../src/detector');
+const NotificationService = require('../src/notifications');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -32,7 +33,7 @@ const program = new Command();
 program
   .name('ghost-carb')
   .description('Detect unlogged carb events from Nightscout')
-  .version('0.1.0');
+  .version('0.2.0');
 
 program
   .command('config')
@@ -55,11 +56,92 @@ program
   });
 
 program
-  .command('test')
-  .description('Test Nightscout connection')
-  .action(async () => {
+  .command('config-notifications')
+  .description('Configure notification channels')
+  .option('--telegram-token <token>', 'Telegram bot token')
+  .option('--telegram-chat <chatId>', 'Telegram chat ID')
+  .option('--signal-url <url>', 'Signal CLI REST API URL')
+  .option('--signal-phone <phone>', 'Signal phone number')
+  .option('--pushover-app <token>', 'Pushover app token')
+  .option('--pushover-user <key>', 'Pushover user key')
+  .option('--slack-webhook <url>', 'Slack webhook URL')
+  .option('--discord-webhook <url>', 'Discord webhook URL')
+  .option('--webhook-url <url>', 'Custom webhook URL')
+  .option('--remove <channel>', 'Remove a channel (telegram|signal|pushover|slack|discord|webhook)')
+  .action((options) => {
     const config = loadConfig();
     
+    if (!config.notifications) config.notifications = {};
+    
+    // Remove channel if requested
+    if (options.remove) {
+      delete config.notifications[options.remove];
+      saveConfig(config);
+      console.log(`✅ Removed ${options.remove} notifications`);
+      return;
+    }
+    
+    // Configure Telegram
+    if (options.telegramToken || options.telegramChat) {
+      config.notifications.telegram = config.notifications.telegram || {};
+      if (options.telegramToken) config.notifications.telegram.botToken = options.telegramToken;
+      if (options.telegramChat) config.notifications.telegram.chatId = options.telegramChat;
+      console.log('✅ Telegram configured');
+    }
+    
+    // Configure Signal
+    if (options.signalUrl || options.signalPhone) {
+      config.notifications.signal = config.notifications.signal || {};
+      if (options.signalUrl) config.notifications.signal.apiUrl = options.signalUrl;
+      if (options.signalPhone) config.notifications.signal.phoneNumber = options.signalPhone;
+      console.log('✅ Signal configured');
+    }
+    
+    // Configure Pushover
+    if (options.pushoverApp || options.pushoverUser) {
+      config.notifications.pushover = config.notifications.pushover || {};
+      if (options.pushoverApp) config.notifications.pushover.appToken = options.pushoverApp;
+      if (options.pushoverUser) config.notifications.pushover.userKey = options.pushoverUser;
+      console.log('✅ Pushover configured');
+    }
+    
+    // Configure Slack
+    if (options.slackWebhook) {
+      config.notifications.slack = { webhookUrl: options.slackWebhook };
+      console.log('✅ Slack configured');
+    }
+    
+    // Configure Discord
+    if (options.discordWebhook) {
+      config.notifications.discord = { webhookUrl: options.discordWebhook };
+      console.log('✅ Discord configured');
+    }
+    
+    // Configure Webhook
+    if (options.webhookUrl) {
+      config.notifications.webhook = { url: options.webhookUrl };
+      console.log('✅ Webhook configured');
+    }
+    
+    saveConfig(config);
+    console.log(`\n   Config file: ${CONFIG_FILE}`);
+  });
+
+program
+  .command('test')
+  .description('Test Nightscout connection and notifications')
+  .option('--notifications', 'Test notification channels')
+  .action(async (options) => {
+    const config = loadConfig();
+    
+    if (options.notifications) {
+      // Test notifications
+      const notifier = new NotificationService(config.notifications);
+      await notifier.test();
+      return;
+    }
+    
+    // Test Nightscout
     if (!config.nightscoutUrl) {
       console.error('❌ Nightscout URL not configured. Run: ghost-carb config --nightscout-url <url>');
       process.exit(1);
@@ -92,6 +174,7 @@ program
   .option('--hours <hours>', 'Hours of data to analyze', '4')
   .option('--notify', 'Send notification if found')
   .option('--json', 'Output as JSON')
+  .option('--quiet', 'Only output if ghosts found')
   .action(async (options) => {
     const config = loadConfig();
     
@@ -109,6 +192,11 @@ program
       
       if (options.json) {
         console.log(JSON.stringify(ghosts, null, 2));
+        return;
+      }
+      
+      // Quiet mode - only output if ghosts found
+      if (options.quiet && ghosts.length === 0) {
         return;
       }
       
@@ -134,8 +222,10 @@ program
           console.log('');
         });
         
-        if (options.notify) {
-          console.log('🔔 Notifications not yet implemented');
+        // Send notifications if requested
+        if (options.notify && config.notifications) {
+          const notifier = new NotificationService(config.notifications);
+          await notifier.notify(ghosts);
         }
       }
       
@@ -158,10 +248,21 @@ program
     console.log(`Exists: ${fs.existsSync(CONFIG_FILE) ? '✅ Yes' : '❌ No'}\n`);
     
     if (config.nightscoutUrl) {
-      console.log(`Nightscout URL: ${config.nightscoutUrl}`);
-      console.log(`API Secret: ${config.apiSecret ? '✅ Set' : '❌ Not set (open site)'}`);
-      console.log(`Rise Threshold: ${config.riseThreshold || 30} mg/dL`);
-      console.log(`Time Window: ${config.timeWindow || 90} minutes`);
+      console.log('🔌 Nightscout Connection');
+      console.log(`   URL: ${config.nightscoutUrl}`);
+      console.log(`   Auth: ${config.apiSecret ? '✅ Set' : '❌ Not set (open site)'}`);
+      console.log(`   Rise Threshold: ${config.riseThreshold || 30} mg/dL`);
+      console.log(`   Time Window: ${config.timeWindow || 90} minutes\n`);
+      
+      if (config.notifications) {
+        const channels = Object.keys(config.notifications);
+        console.log(`🔔 Notifications (${channels.length} channels)`);
+        channels.forEach(ch => {
+          console.log(`   ✅ ${ch.charAt(0).toUpperCase() + ch.slice(1)}`);
+        });
+      } else {
+        console.log('🔔 Notifications: ❌ None configured');
+      }
     } else {
       console.log('No configuration found. Run: ghost-carb config');
     }
@@ -174,7 +275,36 @@ program
   .description('Launch web dashboard')
   .action(() => {
     console.log('Dashboard not yet implemented');
-    console.log('Coming in v0.2.0');
+    console.log('Coming in v0.3.0');
+  });
+
+program
+  .command('demo')
+  .description('Send a test notification to all channels')
+  .action(async () => {
+    const config = loadConfig();
+    
+    if (!config.notifications) {
+      console.error('❌ No notifications configured');
+      process.exit(1);
+    }
+    
+    const notifier = new NotificationService(config.notifications);
+    
+    const testGhost = [{
+      timestamp: new Date(),
+      peakTime: new Date(Date.now() + 45 * 60000),
+      estimatedCarbs: 30,
+      confidence: 0.88,
+      glucoseRise: 55,
+      startGlucose: 95,
+      peakGlucose: 150,
+      duration: 45
+    }];
+    
+    console.log('🧪 Sending demo notification...');
+    await notifier.notify(testGhost);
+    console.log('✅ Done!');
   });
 
 program.parse();
